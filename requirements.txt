@@ -1,0 +1,15 @@
+torch
+torchvision
+timm
+scikit-learn
+pillow
+numpy
+pandas
+matplotlib
+tqdm
+datasets
+fastapi
+uvicorn
+pymongo
+grad-cam
+tabulate
