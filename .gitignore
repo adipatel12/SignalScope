@@ -7,12 +7,9 @@ venv/
 env/
 .env
 
-# Data, Weights, and large binary files (DO NOT COMMIT — too large for GitHub)
+# Data and large archives (Ignore datasets and zip files)
 data/
-weights/
-*.pth
-*.pt
-*.onnx
+*.zip
 
 # Personal photos / test images at root level
 *.jpg
