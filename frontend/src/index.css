@@ -1,0 +1,14 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  body {
+    @apply bg-background text-gray-200 antialiased selection:bg-brand-green selection:text-black;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-surface/50 backdrop-blur-md border border-white/5;
+  }
+}

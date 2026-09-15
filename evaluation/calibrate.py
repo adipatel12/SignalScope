@@ -2,7 +2,8 @@ import os
 import random
 import torch
 import numpy as np
-from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.linear_model import LogisticRegression
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 from datasets import load_dataset
@@ -14,10 +15,10 @@ from preprocessing.transforms import get_transforms
 
 def calibrate_threshold():
     print("="*60)
-    print(" SIGNALSCOPE: BALANCED THRESHOLD CALIBRATION")
+    print(" SIGNALSCOPE: PLATT SCALING CALIBRATION")
     print("="*60)
     
-    device = torch.device(Config.DEVICE)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     print("[1] Loading Validation Data...")
     raw_ds = load_dataset("Rajarshi-Roy-research/Defactify_Image_Dataset", cache_dir=Config.DATA_DIR)
@@ -48,35 +49,48 @@ def calibrate_threshold():
     model.load_state_dict(torch.load(weights_path, map_location=device, weights_only=True))
     model.eval()
     
-    all_probs = []
+    all_logits = []
     all_labels = []
     
-    print("[3] Extracting Probabilities...")
+    print("[3] Extracting Raw Logits...")
     with torch.no_grad():
         for images, labels in tqdm(val_loader, desc="Scanning"):
             images = images.to(device)
-            logits = model(images)
-            probs = torch.sigmoid(logits).cpu().numpy()
+            # Extract RAW logits, not sigmoid probabilities
+            logits = model(images).squeeze(-1) 
             
-            all_probs.extend(probs)
+            # Ensure it is a 1D array before extending
+            if logits.ndim == 0:
+                logits = logits.unsqueeze(0)
+                
+            all_logits.extend(logits.cpu().numpy())
             all_labels.extend(labels.numpy())
             
-    all_probs = np.array(all_probs)
-    all_labels = np.array(all_labels)
+    # [4] Platt Scaling (Logistic Regression)
+    print("[4] Fitting Platt Scaling (Logistic Regression)...")
+    X = np.array(all_logits).reshape(-1, 1)
+    y = np.array(all_labels)
     
-    print("[4] Computing Optimal Decision Threshold...")
-    precisions, recalls, thresholds = precision_recall_curve(all_labels, all_probs)
+    calibrator = LogisticRegression(solver='lbfgs')
+    calibrator.fit(X, y)
     
-    f1_scores = (2 * precisions * recalls) / (precisions + recalls + 1e-8)
-    optimal_idx = np.argmax(f1_scores)
-    optimal_threshold = thresholds[optimal_idx]
-    optimal_f1 = f1_scores[optimal_idx]
+    w = calibrator.coef_[0][0]
+    b = calibrator.intercept_[0]
     
-    print(f"\n--- Calibration Results ---")
-    print(f"[*] Optimal Threshold  : {optimal_threshold:.4f}")
-    print(f"[*] Maximum F1 Score   : {optimal_f1:.4f}")
-    print(f"[*] Precision at Thresh: {precisions[optimal_idx]:.4f}")
-    print(f"[*] Recall at Thresh   : {recalls[optimal_idx]:.4f}")
+    # Test the recalibrated probabilities at the standard 0.50 threshold
+    calibrated_probs = 1.0 / (1.0 + np.exp(-(w * X.flatten() + b)))
+    preds = (calibrated_probs >= 0.50).astype(int)
+    
+    f1 = f1_score(y, preds)
+    prec = precision_score(y, preds)
+    rec = recall_score(y, preds)
+    
+    print("\n--- Calibration Results ---")
+    print(f"[*] Calibration Weight (w): {w:.4f}")
+    print(f"[*] Calibration Bias (b)  : {b:.4f}")
+    print(f"[*] F1 Score at 0.50      : {f1:.4f}")
+    print(f"[*] Precision at 0.50     : {prec:.4f}")
+    print(f"[*] Recall at 0.50        : {rec:.4f}")
     print("============================================================")
 
 if __name__ == "__main__":

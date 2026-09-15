@@ -7,7 +7,7 @@ class Config:
     # ---------------------------------------------------------
     PROJECT_NAME = "SignalScope"
     SEED = 42                                 # For reproducibility
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    DEVICE = "cuda"
     
     # ---------------------------------------------------------
     # 2. DATASET LIMITS (CRITICAL FOR CPU TRAINING)
@@ -15,19 +15,19 @@ class Config:
     # The full dataset is 96,000 images. CPU training will take weeks.
     # We restrict to a manageable subset for the baseline experiment.
     MAX_TRAIN_SAMPLES = 10000
-    MAX_VAL_SAMPLES = 2000
-    
+    MAX_VAL_SAMPLES = 1000
+
     # ---------------------------------------------------------
     # 3. HYPERPARAMETERS
     # ---------------------------------------------------------
     MODEL_NAME = "convnextv2_atto"
     IMAGE_SIZE = 224
     BATCH_SIZE = 32
-    EPOCHS = 7                               # Keep low for CPU
-    LEARNING_RATE = 1e-4                      # Standard starting LR for AdamW
+    EPOCHS = 2                                # Keep low for CPU
+    LEARNING_RATE = 5e-6                      # Standard starting LR for AdamW
     WEIGHT_DECAY = 1e-4                       # L2 regularization
-    NUM_WORKERS = 0                           # Must be 0 on Windows to avoid freezing
-    PATIENCE = 3                              # Early stopping threshold
+    NUM_WORKERS = 4                          # Must be 0 on Windows to avoid freezing
+    PATIENCE = 3                            # Early stopping threshold
     
     # ---------------------------------------------------------
     # 4. CLASS IMBALANCE HANDLING

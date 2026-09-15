@@ -14,7 +14,7 @@ from preprocessing.transforms import get_transforms
 app = FastAPI(
     title="SignalScope Enterprise API",
     description="Production-Grade AI Image Forensics & Attribution Engine",
-    version="5.0"
+    version="6.0"
 )
 
 # Allow Cross-Origin Requests
@@ -30,15 +30,16 @@ app.add_middleware(
 MODEL = None
 DEVICE = None
 TRANSFORMS = None
-# Calibrated via evaluation/calibrate.py on balanced 1k Real / 1k AI validation set.
-# F1: 0.9795 | Precision: 0.9809 | Recall: 0.9780
-CALIBRATED_BASE_THRESHOLD = 0.9086
+
+# Platt Scaling Calibration Constants
+CALIBRATION_W = 0.8042
+CALIBRATION_B = -0.1060
 
 @app.on_event("startup")
 async def load_model():
     global MODEL, DEVICE, TRANSFORMS
     print("🚀 Starting SignalScope Production Engine...")
-    DEVICE = torch.device(Config.DEVICE)
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     TRANSFORMS = get_transforms()['val']
     
     weights_path = os.path.join(Config.WEIGHTS_DIR, "baseline_v2_best.pth")
@@ -49,27 +50,24 @@ async def load_model():
     MODEL.load_state_dict(torch.load(weights_path, map_location=DEVICE, weights_only=True))
     MODEL.to(DEVICE)
     MODEL.eval()
-    print(f"✅ Production Model loaded. Base Threshold set to {CALIBRATED_BASE_THRESHOLD}")
+    print(f"✅ Production Model loaded. Platt Scaling (w={CALIBRATION_W}, b={CALIBRATION_B}) activated.")
 
 @app.get("/")
 def health_check():
     return {
         "status": "online", 
-        "engine": "SignalScope V2 (Semantic Multi-Crop)",
-        "calibrated_threshold": CALIBRATED_BASE_THRESHOLD
+        "engine": "SignalScope V2 (Semantic Multi-Crop + Platt Scaling)",
+        "calibrated_threshold": 0.5000
     }
 
 def extract_evaluation_crops(image: Image.Image, crop_size: int = 256) -> list:
-    """
-    Extracts crops while maintaining semantic scale so the model 
-    recognizes faces and objects, not just microscopic textures.
-    """
+    """Extracts a global macro and a dense 3x3 overlapping grid."""
     crops = []
     
-    # 1. Macro Global Overview (Always Index 0)
+    # 1. Macro Global Overview (Index 0)
     crops.append(image.resize((crop_size, crop_size), Image.Resampling.BILINEAR))
     
-    # 2. Normalize image size for realistic semantic patching
+    # 2. Scale image
     w, h = image.size
     max_dim = 1024
     if max(w, h) > max_dim:
@@ -79,20 +77,18 @@ def extract_evaluation_crops(image: Image.Image, crop_size: int = 256) -> list:
     else:
         working_img = image
 
-    # 3. Standard 5-Crop Extraction (Corners + Center)
     ww, hh = working_img.size
-    if ww >= crop_size and hh >= crop_size:
-        # Top-Left, Top-Right, Bottom-Left, Bottom-Right
-        crops.append(working_img.crop((0, 0, crop_size, crop_size)))
-        crops.append(working_img.crop((ww - crop_size, 0, ww, crop_size)))
-        crops.append(working_img.crop((0, hh - crop_size, crop_size, hh)))
-        crops.append(working_img.crop((ww - crop_size, hh - crop_size, ww, hh)))
-        
-        # Center Crop (Captures the main subject/face)
-        left = (ww - crop_size) // 2
-        top = (hh - crop_size) // 2
-        crops.append(working_img.crop((left, top, left + crop_size, top + crop_size)))
-        
+    
+    # 3. Dense 3x3 Overlapping Grid (9 Crops)
+    step_x = max(1, (ww - crop_size) // 2)
+    step_y = max(1, (hh - crop_size) // 2)
+    
+    for i in range(3):
+        for j in range(3):
+            left = min(i * step_x, ww - crop_size)
+            top = min(j * step_y, hh - crop_size)
+            crops.append(working_img.crop((left, top, left + crop_size, top + crop_size)))
+            
     return crops
 
 @app.post("/analyze/")
@@ -112,43 +108,55 @@ async def analyze_image(file: UploadFile = File(...), profile: str = Form("balan
         with torch.no_grad():
             for crop in crops:
                 img_tensor = TRANSFORMS(crop).unsqueeze(0).to(DEVICE)
-                logit = MODEL(img_tensor)
-                prob = torch.sigmoid(logit).item()
+                raw_logit = MODEL(img_tensor)
+                
+                # Apply Platt scaling to the raw logit before converting to probability
+                calibrated_logit = (CALIBRATION_W * raw_logit) + CALIBRATION_B
+                prob = torch.sigmoid(calibrated_logit).item()
                 crop_probabilities.append(prob)
                 
+        # --- RESOLUTION-AWARE AGGREGATION ---
+        max_dim = max(width, height)
+        # Lowered to 2000 to catch modern 2K AI generations (like Midjourney & Gemini)
+        is_high_res = max_dim >= 2000  
+        
         global_prob = crop_probabilities[0]
         local_probs = crop_probabilities[1:]
         
-        # --- ROBUST MEDIAN AGGREGATION ---
         if len(local_probs) > 0:
-            local_probs_sorted = sorted(local_probs)
-            # Average the top 2 localized spikes
-            top2_avg = sum(local_probs_sorted[-2:]) / 2.0 if len(local_probs_sorted) >= 2 else local_probs_sorted[0]
+            local_probs_sorted = sorted(local_probs, reverse=True)
+            
+            top_k = max(2, len(local_probs_sorted) // 3)
+            top_k_avg = sum(local_probs_sorted[:top_k]) / top_k
             median_score = float(np.median(local_probs_sorted))
             
-            # Median cutoff is set to 0.45 (midpoint of [0, optimal_threshold=0.9086]).
-            # If the median patch score is below this, most of the image looks authentic.
-            if median_score < 0.45:
-                prob_ai = (0.20 * top2_avg) + (0.55 * median_score) + (0.25 * global_prob)
+            if is_high_res:
+                # 2K/4K/5K: Global downsampling destroys artifacts. Heavily weight local spikes.
+                prob_ai = (0.65 * top_k_avg) + (0.25 * median_score) + (0.10 * global_prob)
+            elif global_prob < 0.20 and top_k_avg > 0.70:
+                # COMPRESSION DAMPENER: Protects standard <2000px social media uploads from noisy false positives.
+                prob_ai = (0.15 * top_k_avg) + (0.35 * median_score) + (0.50 * global_prob)
             else:
-                # Median is high — AI artifacts are spatially widespread (strong True AI signal).
-                prob_ai = (0.45 * top2_avg) + (0.35 * median_score) + (0.20 * global_prob)
+                # Standard Contextual Formula
+                prob_ai = (0.35 * top_k_avg) + (0.25 * median_score) + (0.40 * global_prob)
         else:
             prob_ai = global_prob
             
+        # --- STANDARD PROBABILITY RISK TIERS ---
         threshold_map = {
-            "strict": 0.6500,   # Catches subtle/stylized AI — higher false positive rate
-            "balanced": CALIBRATED_BASE_THRESHOLD,  # 0.9086 (F1-optimal)
-            "lenient": 0.9600   # Only flags very obvious AI — lower false positive rate
+            "strict": 0.3000,                      
+            "balanced": 0.5000, 
+            "lenient": 0.7000                      
         }
-        active_threshold = threshold_map.get(profile, CALIBRATED_BASE_THRESHOLD)
+        active_threshold = threshold_map.get(profile, 0.5000)
         is_ai = prob_ai >= active_threshold
         
-        if prob_ai >= 0.90:
+        # Clean, intuitive risk categorization
+        if prob_ai >= 0.8500:
             risk_level = "HIGH_CONFIDENCE_SYNTHETIC"
         elif prob_ai >= active_threshold:
             risk_level = "MODERATE_SYNTHETIC_ANOMALY"
-        elif prob_ai <= 0.10:
+        elif prob_ai <= 0.1500:
             risk_level = "HIGH_CONFIDENCE_AUTHENTIC"
         else:
             risk_level = "NATURAL_OR_COMPUTATIONAL_PHOTO"

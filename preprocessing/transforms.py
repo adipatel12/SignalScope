@@ -2,32 +2,31 @@ from torchvision import transforms
 
 def get_transforms():
     """
-    Returns a dictionary of forensic-safe transformations for train and val/test sets.
+    Returns a dictionary of forensic-safe transformations.
+    Removes destructive resizing to preserve high-frequency AI artifacts.
     """
-    # ImageNet statistics required by almost all timm pretrained backbones
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
 
     return {
         "train": transforms.Compose([
-            # 1. Resize slightly larger than target to allow cropping
-            transforms.Resize((256, 256)),
-            # 2. Random crop to 224x224. Safe for forensics as it preserves original pixel scale
-            transforms.RandomCrop((224, 224)),
-            # 3. Horizontal flip. Completely safe, doesn't destroy generation artifacts
+            # 1. Pad images smaller than 224 to avoid crash, but DO NOT resize
+            transforms.Pad(padding=0, fill=0, padding_mode='constant'), 
+            transforms.RandomCrop((224, 224), pad_if_needed=True),
+            
+            # 2. Discrete, safe geometric transforms
             transforms.RandomHorizontalFlip(p=0.5),
-            # 4. Mild brightness/contrast changes. Safe. 
-            # (Do NOT use GaussianBlur or JPEG compression here, we save that for robustness testing)
+            
+            # 3. Photometric shifts (Safe for FFT phase relationships)
             transforms.ColorJitter(brightness=0.1, contrast=0.1),
-            # 5. Convert to PyTorch Tensor (scales pixels from 0-255 to 0.0-1.0)
+            
+            # 4. Standard Tensor conversion and normalization
             transforms.ToTensor(),
-            # 6. Normalize using ImageNet stats
             transforms.Normalize(mean=mean, std=std)
         ]),
         
         "val": transforms.Compose([
-            # Validation/Test must be deterministic. No randomness.
-            transforms.Resize((256, 256)),
+            # Deterministic, pure center crop directly from native resolution
             transforms.CenterCrop((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize(mean=mean, std=std)
