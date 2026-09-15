@@ -46,40 +46,7 @@ export function Methodology() {
 
         </div>
         
-        {/* Architecture Flow */}
-        <div id="architecture" className="mt-16 glass p-8 rounded-xl border border-white/10">
-          <h3 className="text-xl font-bold mb-8 tracking-wide text-center">PIPELINE ARCHITECTURE</h3>
-          
-          <div className="flex flex-col items-center space-y-4 font-mono text-sm">
-            <FlowStep label="IMAGE UPLOAD" />
-            <FlowArrow />
-            <FlowStep label="SEMANTIC MULTI-CROP (9 REGIONS + GLOBAL)" />
-            <FlowArrow />
-            <FlowStep label="DUAL-STREAM INFERENCE (SPATIAL + FFT)" />
-            <FlowArrow />
-            <FlowStep label="RAW LOGIT EXTRACTION" />
-            <FlowArrow />
-            <FlowStep label="PLATT SCALING CALIBRATION" highlight />
-            <FlowArrow />
-            <FlowStep label="ROBUST MEDIAN AGGREGATION" />
-            <FlowArrow />
-            <FlowStep label="FINAL FORENSIC RESULT" />
-          </div>
-        </div>
-        
       </div>
     </section>
   );
-}
-
-function FlowStep({ label, highlight = false }: { label: string, highlight?: boolean }) {
-  return (
-    <div className={`px-6 py-3 rounded text-center min-w-[300px] border ${highlight ? 'border-brand-green text-brand-green bg-brand-green/10' : 'border-white/20 text-gray-300 bg-white/5'}`}>
-      {label}
-    </div>
-  );
-}
-
-function FlowArrow() {
-  return <div className="text-gray-600 text-xl">↓</div>;
 }

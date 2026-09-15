@@ -95,6 +95,25 @@ export function ResultDashboard({ result, imagePreviewUrl }: ResultDashboardProp
           </div>
         </div>
       </div>
+
+      {result.heatmap_base64 && (
+        <div className="glass rounded-xl p-6 border border-white/10 flex flex-col mt-6 bg-brand-cyan/5 border-brand-cyan/20">
+          <div className="flex items-center gap-2 mb-4 text-brand-cyan">
+            <Activity className="w-5 h-5" />
+            <span className="text-sm font-mono tracking-wide font-bold">VISUAL EXPLANATION (GRAD-CAM)</span>
+          </div>
+          <div className="flex flex-col md:flex-row items-center justify-center gap-8">
+            <div className="relative bg-black rounded-lg overflow-hidden flex items-center justify-center">
+              <img src={result.heatmap_base64} alt="Grad-CAM Heatmap" className="max-w-full max-h-[350px] object-contain" />
+            </div>
+            {result.explanation && (
+              <div className="p-6 bg-black/40 rounded-xl border border-brand-cyan/20 font-mono text-sm text-gray-200 md:max-w-md shadow-lg">
+                <p className="leading-relaxed">{result.explanation}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -10,6 +10,8 @@ tqdm
 datasets
 fastapi
 uvicorn
+python-multipart
+opencv-python
 pymongo
-grad-cam
 tabulate
+grad-cam
