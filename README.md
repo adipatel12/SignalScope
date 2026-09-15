@@ -61,7 +61,7 @@ npm run dev
   - **License:** Open/MIT Licensed for research.
   - **Details:** Used for training the `ConvNeXt` backbone and evaluating the initial baseline. No proprietary or scraped targeted individual data was used.
 
- **also used the Training/Validation Data:** Describable Textures Dataset (DTD): Leveraged specific geometric texture categories (grid, striped, meshed) as hard negatives to fortify the frequency stream against false positives from natural periodic patterns.
+ also used the Training/Validation Data: Describable Textures Dataset (DTD): Leveraged specific geometric texture categories (grid, striped, meshed) as hard negatives to fortify the frequency stream against false positives from natural periodic patterns.
 -- some geminie and other model used for this 
 ---
 
