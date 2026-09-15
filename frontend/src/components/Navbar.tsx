@@ -77,7 +77,7 @@ export function Navbar({ currentView, onNavigate }: NavbarProps) {
             onClick={() => handleNavClick('home', 'architecture')} 
             className="text-gray-400 hover:text-brand-green transition-colors cursor-pointer"
           >
-            ARCHITECTURE
+            
           </button>
         </div>
 

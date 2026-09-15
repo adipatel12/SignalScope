@@ -93,8 +93,6 @@ To handle real-world degradations (Bonus C), we use **Semantic Multi-Crop Aggreg
 
 ## 6. Links
 
-- **Demo Video (3-5 mins):** `[Insert YouTube Unlisted Link Here]`
-- **Live Deployed App:** `[Insert Vercel/Render Link Here if applicable, otherwise remove]`
-
+- ** Video :** ["https://drive.google.com/file/d/1jvLhPXjFc8J1aRr60SrImdXntc8S24pD/view?usp=drivesdk"]
 - **Report Link:** ["https://drive.google.com/file/d/1ewgN9ytyVf442KVTyQ-Zq0gDOODyIhCV/view?usp=sharing"] 
 
